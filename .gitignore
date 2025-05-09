@@ -1,0 +1,10 @@
+# Ignore all
+*
+# But these
+!.gitignore
+!mida.h
+!Makefile
+!README.md
+!LICENSE
+!test
+!.clang-format
