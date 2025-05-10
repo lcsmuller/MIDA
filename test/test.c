@@ -2,21 +2,34 @@
 #include "mida.h"
 
 TEST
-test_init(void)
+test_init_compound_literals(void)
 {
-    struct {
+    struct test {
         int *x;
         float *y;
-        float *z;
-    } foo = {
-        .x = mida_compound_literal(int, 1, 2, 3),
-        .y = mida_compound_literal(float, 1.0f, 2.0f, 3.0f, 4.0f),
+        struct test *z;
+    };
+
+    struct test foo = {
+        .x = mida_unnamed_array(int, { 1, 2, 3 }),
+        .y = mida_unnamed_array(float, { 1.0f, 2.0f, 3.0f, 4.0f }),
+        .z = mida_unnamed_struct(
+            struct test, { .x = mida_unnamed_array(int, { 1, 2, 3 }),
+                           .y = mida_unnamed_array(float, { 1.0f, 2.0f }),
+                           .z = NULL }),
     };
 
     ASSERT_EQ(3, mida_length(foo.x));
     ASSERT_EQ(4, mida_length(foo.y));
+    ASSERT_EQ(1, mida_length(foo.z));
+    ASSERT_EQ(3, mida_length(foo.z->x));
+    ASSERT_EQ(2, mida_length(foo.z->y));
+    ASSERT_EQ(NULL, foo.z->z);
     ASSERT_EQ(sizeof(int[3]), mida_sizeof(foo.x));
     ASSERT_EQ(sizeof(float[4]), mida_sizeof(foo.y));
+    ASSERT_EQ(sizeof(struct test), mida_sizeof(foo.z));
+    ASSERT_EQ(sizeof(int[3]), mida_sizeof(foo.z->x));
+    ASSERT_EQ(sizeof(float[2]), mida_sizeof(foo.z->y));
 
     PASS();
 }
@@ -24,8 +37,8 @@ test_init(void)
 TEST
 test_different_types(void)
 {
-    char *str_array = mida_compound_literal(char, 'a', 'b', 'c', 'd');
-    double *double_array = mida_compound_literal(double, 1.1, 2.2, 3.3);
+    char *str_array = mida_unnamed_array(char, { 'a', 'b', 'c', 'd' });
+    double *double_array = mida_unnamed_array(double, { 1.1, 2.2, 3.3 });
 
     ASSERT_EQ(4, mida_length(str_array));
     ASSERT_EQ(3, mida_length(double_array));
@@ -39,8 +52,8 @@ TEST
 test_large_array(void)
 {
     int *large_array =
-        mida_compound_literal(int, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                              14, 15, 16, 17, 18, 19, 20);
+        mida_unnamed_array(int, { 1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+                                  11, 12, 13, 14, 15, 16, 17, 18, 19, 20 });
 
     ASSERT_EQ(20, mida_length(large_array));
     ASSERT_EQ(sizeof(int[20]), mida_sizeof(large_array));
@@ -141,7 +154,6 @@ test_realloc_null(void)
     array[1] = 'E';
     array[2] = 'S';
     array[3] = 'T';
-
     ASSERT_EQ('T', array[0]);
     ASSERT_EQ('E', array[1]);
     ASSERT_EQ('S', array[2]);
@@ -151,14 +163,105 @@ test_realloc_null(void)
     PASS();
 }
 
-SUITE(mida_suite)
+TEST
+test_deep_nested_arrays(void)
 {
-    RUN_TEST(test_init);
-    RUN_TEST(test_different_types);
-    RUN_TEST(test_large_array);
+    // Create a structure with nested arrays - strings within arrays within
+    // arrays
+    struct {
+        char ***nested_arrays;
+    } container = {
+        .nested_arrays = mida_unnamed_array(
+            char **,
+            { mida_unnamed_array(
+                  char *,
+                  { mida_unnamed_array(char, { 'f', 'o', 'o', '\0' }),
+                    mida_unnamed_array(char, { 'b', 'a', 'r', '\0' }) }),
+              mida_unnamed_array(
+                  char *,
+                  { mida_unnamed_array(char, { 'f', 'o', 'o', '\0' }) }) })
+    };
+
+    // Test the outermost array (has 2 elements)
+    ASSERT_EQ(2, mida_length(container.nested_arrays));
+
+    // Test the first inner array (has 2 elements: "foo" and "bar")
+    ASSERT_EQ(2, mida_length(container.nested_arrays[0]));
+
+    // Test the second inner array (has 1 element: "foo")
+    ASSERT_EQ(1, mida_length(container.nested_arrays[1]));
+
+    // Test string contents of the innermost arrays
+    ASSERT_EQ(4, mida_length(container.nested_arrays[0][0]));
+    ASSERT_EQ(4, mida_length(container.nested_arrays[0][1]));
+    ASSERT_EQ(4, mida_length(container.nested_arrays[1][0]));
+
+    ASSERT_STR_EQ("foo", container.nested_arrays[0][0]);
+    ASSERT_STR_EQ("bar", container.nested_arrays[0][1]);
+    ASSERT_STR_EQ("foo", container.nested_arrays[1][0]);
+
+    PASS();
 }
 
-SUITE(mida_stdlib)
+TEST
+test_shallow_mida_deep_nesting(void)
+{
+    // Define a regular C array of strings (char arrays)
+    const char *regular_strings[] = { "hello", "world" };
+
+    // Define a regular 2D int array
+    int regular_2d_array[][3] = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
+
+    // Create an array where only the outer container is mida-tracked
+    // but the inner elements are regular C arrays
+    struct {
+        void **mixed_array;
+    } container = {
+        .mixed_array = mida_unnamed_array(
+            void *,
+            {
+                (void *)regular_strings, // Regular array of strings
+                (void *)regular_2d_array, // Regular 2D array
+                (void *)(const char *[]){ "foo", "bar",
+                                          "baz" } // Unnamed array
+            })
+    };
+
+    // Test that the outermost array has metadata
+    ASSERT_EQ(3, mida_length(container.mixed_array));
+    ASSERT_EQ(sizeof(void *[3]), mida_sizeof(container.mixed_array));
+
+    // Access the inner arrays as regular C arrays (no mida metadata)
+    const char **strings = (const char **)container.mixed_array[0];
+    ASSERT_STR_EQ("hello", strings[0]);
+    ASSERT_STR_EQ("world", strings[1]);
+
+    int(*matrix)[3] = (int(*)[3])container.mixed_array[1];
+    ASSERT_EQ(1, matrix[0][0]);
+    ASSERT_EQ(5, matrix[1][1]);
+    ASSERT_EQ(9, matrix[2][2]);
+
+    const char **more_strings = (const char **)container.mixed_array[2];
+    ASSERT_STR_EQ("foo", more_strings[0]);
+    ASSERT_STR_EQ("bar", more_strings[1]);
+    ASSERT_STR_EQ("baz", more_strings[2]);
+
+    // We can't use mida_length() or mida_sizeof() on the inner elements
+    // because they're not mida-managed arrays
+
+    PASS();
+}
+
+SUITE(suite_compound_literals)
+{
+    RUN_TEST(test_init_compound_literals);
+    RUN_TEST(test_different_types);
+    RUN_TEST(test_large_array);
+    RUN_TEST(test_deep_nested_arrays);
+    RUN_TEST(test_shallow_mida_deep_nesting);
+}
+
+SUITE(suite_stdlib)
 {
     RUN_TEST(test_malloc);
     RUN_TEST(test_calloc);
@@ -172,7 +275,7 @@ int
 main(int argc, char *argv[])
 {
     GREATEST_MAIN_BEGIN();
-    RUN_SUITE(mida_suite);
-    RUN_SUITE(mida_stdlib);
+    RUN_SUITE(suite_compound_literals);
+    RUN_SUITE(suite_stdlib);
     GREATEST_MAIN_END();
 }
