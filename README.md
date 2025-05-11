@@ -101,6 +101,22 @@ data = mida_realloc(data, sizeof(float), 20);
 mida_free(data);
 ```
 
+## C89 Compatibility Mode (without Compound Literals)
+
+MIDA provides an alternative API for C89 compatibility:
+
+```c
+// Create a bytemap buffer to hold data and metadata
+int data[] = {1, 2, 3, 4, 5};
+MIDA_BYTEMAP(bytemap, sizeof(data));
+
+// Wrap existing data with metadata
+int *wrapped = mida_wrap(data, bytemap);
+
+// Access metadata as usual
+printf("Length: %zu\n", mida_length(wrapped)); // 5
+```
+
 ## Memory Management
 
 MIDA uses a clever approach to store metadata alongside the array data. Each mida-managed array is prefixed with a small header containing:
@@ -149,16 +165,50 @@ const char **n = (const char**)container[1];
 printf("Name: %s\n", n[1]); // "Bob"
 ```
 
+## API Reference
+
+### Core Functions
+
+| Function | Description |
+|----------|-------------|
+| `void *mida_malloc(size_t element_size, size_t count)` | Allocates memory with metadata for `count` elements of size `element_size` |
+| `void *mida_calloc(size_t element_size, size_t count)` | Allocates zeroed memory with metadata for `count` elements of size `element_size` |
+| `void *mida_realloc(void *ptr, size_t element_size, size_t count)` | Resizes memory with metadata for `count` elements of size `element_size` |
+| `void mida_free(void *ptr)` | Frees memory allocated with MIDA functions |
+
+### C99 Macros (Compound Literals)
+
+| Macro | Description |
+|-------|-------------|
+| `mida_array(type, {...})` | Creates an array with metadata using compound literals |
+| `mida_struct(type, {...})` | Creates a structure with metadata using compound literals |
+| `mida_bytemap(size)` | Creates a bytemap buffer with the specified size (for internal use) |
+
+### C89 Compatibility Macros
+
+| Macro | Description |
+|-------|-------------|
+| `MIDA_BYTEMAP(bytemap, size)` | Defines a bytemap buffer to hold metadata and data |
+| `mida_wrap(data, bytemap)` | Wraps existing data with metadata using a bytemap buffer |
+
+### Metadata Access Macros
+
+| Macro | Description |
+|-------|-------------|
+| `mida_sizeof(ptr)` | Gets the total size in bytes of data managed by MIDA |
+| `mida_length(ptr)` | Gets the number of elements in an array managed by MIDA |
+| `mida_container(ptr)` | Gets the container structure for a given data pointer |
+
 ## Build
 
-mida is single-header-only library, so it includes additional macros for more complex uses cases. `#define MIDA_STATIC` hides all mida API symbols by making them static. Also, if you want to include `mida.h` from multiple C files, to avoid duplication of symbols you may define `MIDA_HEADER` macro.
+MIDA is single-header-only library, so it includes additional macros for more complex uses cases. `#define MIDA_STATIC` hides all mida API symbols by making them static. Also, if you want to include `mida.h` from multiple C files, to avoid duplication of symbols you may define `MIDA_HEADER` macro.
 
 ```c
-/* In every .c file that uses mida include only declarations: */
+/* In every .c file that uses MIDA include only declarations: */
 #define MIDA_HEADER
 #include "mida.h"
 
-/* Additionally, create one mida.c file for mida implementation: */
+/* Additionally, create one mida.c file for MIDA implementation: */
 #include "mida.h"
 ```
 
