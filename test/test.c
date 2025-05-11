@@ -11,12 +11,56 @@ test_init_compound_literals(void)
     };
 
     struct test foo = {
-        .x = mida_unnamed_array(int, { 1, 2, 3 }),
-        .y = mida_unnamed_array(float, { 1.0f, 2.0f, 3.0f, 4.0f }),
-        .z = mida_unnamed_struct(
-            struct test, { .x = mida_unnamed_array(int, { 1, 2, 3 }),
-                           .y = mida_unnamed_array(float, { 1.0f, 2.0f }),
-                           .z = NULL }),
+        .x = mida_array(int, { 1, 2, 3 }),
+        .y = mida_array(float, { 1.0f, 2.0f, 3.0f, 4.0f }),
+        .z = mida_struct(struct test, { .x = mida_array(int, { 1, 2, 3 }),
+                                        .y = mida_array(float, { 1.0f, 2.0f }),
+                                        .z = NULL }),
+    };
+
+    ASSERT_EQ(3, mida_length(foo.x));
+    ASSERT_EQ(4, mida_length(foo.y));
+    ASSERT_EQ(1, mida_length(foo.z));
+    ASSERT_EQ(3, mida_length(foo.z->x));
+    ASSERT_EQ(2, mida_length(foo.z->y));
+    ASSERT_EQ(NULL, foo.z->z);
+    ASSERT_EQ(sizeof(int[3]), mida_sizeof(foo.x));
+    ASSERT_EQ(sizeof(float[4]), mida_sizeof(foo.y));
+    ASSERT_EQ(sizeof(struct test), mida_sizeof(foo.z));
+    ASSERT_EQ(sizeof(int[3]), mida_sizeof(foo.z->x));
+    ASSERT_EQ(sizeof(float[2]), mida_sizeof(foo.z->y));
+
+    PASS();
+}
+
+TEST
+test_init_c89(void)
+{
+    struct test {
+        int *x;
+        float *y;
+        struct test *z;
+    };
+
+    int zx[] = { 1, 2, 3 };
+    MIDA_BYTEMAP(bytemap_zx, sizeof(zx)) = { 0 };
+    float zy[] = { 1.0f, 2.0f };
+    MIDA_BYTEMAP(bytemap_zy, sizeof(zy)) = { 0 };
+    struct test z = {
+        mida_wrap(zx, bytemap_zx),
+        mida_wrap(zy, bytemap_zy),
+        NULL,
+    };
+    MIDA_BYTEMAP(bytemap_z, sizeof(z)) = { 0 };
+
+    int x[] = { 1, 2, 3 };
+    MIDA_BYTEMAP(bytemap_x, sizeof(x)) = { 0 };
+    float y[] = { 1.0f, 2.0f, 3.0f, 4.0f };
+    MIDA_BYTEMAP(bytemap_y, sizeof(y)) = { 0 };
+    struct test foo = {
+        mida_wrap(x, bytemap_x),
+        mida_wrap(y, bytemap_y),
+        mida_wrap(&z, bytemap_z),
     };
 
     ASSERT_EQ(3, mida_length(foo.x));
@@ -37,8 +81,8 @@ test_init_compound_literals(void)
 TEST
 test_different_types(void)
 {
-    char *str_array = mida_unnamed_array(char, { 'a', 'b', 'c', 'd' });
-    double *double_array = mida_unnamed_array(double, { 1.1, 2.2, 3.3 });
+    char *str_array = mida_array(char, { 'a', 'b', 'c', 'd' });
+    double *double_array = mida_array(double, { 1.1, 2.2, 3.3 });
 
     ASSERT_EQ(4, mida_length(str_array));
     ASSERT_EQ(3, mida_length(double_array));
@@ -52,8 +96,8 @@ TEST
 test_large_array(void)
 {
     int *large_array =
-        mida_unnamed_array(int, { 1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
-                                  11, 12, 13, 14, 15, 16, 17, 18, 19, 20 });
+        mida_array(int, { 1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+                          11, 12, 13, 14, 15, 16, 17, 18, 19, 20 });
 
     ASSERT_EQ(20, mida_length(large_array));
     ASSERT_EQ(sizeof(int[20]), mida_sizeof(large_array));
@@ -171,15 +215,13 @@ test_deep_nested_arrays(void)
     struct {
         char ***nested_arrays;
     } container = {
-        .nested_arrays = mida_unnamed_array(
+        .nested_arrays = mida_array(
             char **,
-            { mida_unnamed_array(
-                  char *,
-                  { mida_unnamed_array(char, { 'f', 'o', 'o', '\0' }),
-                    mida_unnamed_array(char, { 'b', 'a', 'r', '\0' }) }),
-              mida_unnamed_array(
-                  char *,
-                  { mida_unnamed_array(char, { 'f', 'o', 'o', '\0' }) }) })
+            { mida_array(char *,
+                         { mida_array(char, { 'f', 'o', 'o', '\0' }),
+                           mida_array(char, { 'b', 'a', 'r', '\0' }) }),
+              mida_array(char *,
+                         { mida_array(char, { 'f', 'o', 'o', '\0' }) }) })
     };
 
     // Test the outermost array (has 2 elements)
@@ -217,14 +259,14 @@ test_shallow_mida_deep_nesting(void)
     struct {
         void **mixed_array;
     } container = {
-        .mixed_array = mida_unnamed_array(
-            void *,
-            {
-                (void *)regular_strings, // Regular array of strings
-                (void *)regular_2d_array, // Regular 2D array
-                (void *)(const char *[]){ "foo", "bar",
-                                          "baz" } // Unnamed array
-            })
+        .mixed_array =
+            mida_array(void *,
+                       {
+                           (void *)regular_strings, // Regular array of strings
+                           (void *)regular_2d_array, // Regular 2D array
+                           (void *)(const char *[]){ "foo", "bar",
+                                                     "baz" } // Unnamed array
+                       })
     };
 
     // Test that the outermost array has metadata
@@ -255,6 +297,7 @@ test_shallow_mida_deep_nesting(void)
 SUITE(suite_compound_literals)
 {
     RUN_TEST(test_init_compound_literals);
+    RUN_TEST(test_init_c89);
     RUN_TEST(test_different_types);
     RUN_TEST(test_large_array);
     RUN_TEST(test_deep_nested_arrays);

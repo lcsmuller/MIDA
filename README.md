@@ -22,8 +22,8 @@ MIDA is a single-header library that attaches size and length metadata to C nati
 
 ```c
 // Create arrays with compound literals (using C99 designated initializers)
-int *numbers = mida_unnamed_array(int, { 1, 2, 3, 4, 5 });
-char *letters = mida_unnamed_array(char, { 'a', 'b', 'c', 'd' });
+int *numbers = mida_array(int, { 1, 2, 3, 4, 5 });
+char *letters = mida_array(char, { 'a', 'b', 'c', 'd' });
 
 // Access the metadata
 size_t len = mida_length(numbers);  // 5
@@ -45,10 +45,10 @@ struct my_data {
 };
 
 // Create a structure with metadata
-struct my_data *data = mida_unnamed_struct(
+struct my_data *data = mida_struct(
     struct my_data, {
-        .numbers = mida_unnamed_array(int, { 1, 2, 3 }),
-        .values = mida_unnamed_array(float, { 1.0f, 2.0f, 3.0f })
+        .numbers = mida_array(int, { 1, 2, 3 }),
+        .values = mida_array(float, { 1.0f, 2.0f, 3.0f })
     }
 );
 
@@ -61,14 +61,14 @@ printf("First value: %f\n", data->values[0]); // 1.0
 
 ```c
 // Create deeply nested arrays (like a 2D string array)
-char ***nested = mida_unnamed_array(
+char ***nested = mida_array(
     char **, {
-        mida_unnamed_array(char *, { 
-            mida_unnamed_array(char, { 'f', 'o', 'o', '\0' }),
-            mida_unnamed_array(char, { 'b', 'a', 'r', '\0' })
+        mida_array(char *, { 
+            mida_array(char, { 'f', 'o', 'o', '\0' }),
+            mida_array(char, { 'b', 'a', 'r', '\0' })
         }),
-        mida_unnamed_array(char *, {
-            mida_unnamed_array(char, { 'h', 'i', '\0' })
+        mida_array(char *, {
+            mida_array(char, { 'h', 'i', '\0' })
         })
     }
 );
@@ -131,7 +131,7 @@ int matrix[][2] = { {1, 2}, {3, 4} };
 const char *names[] = {"Alice", "Bob"};
 
 // Wrap in a MIDA container
-void **container = mida_unnamed_array(
+void **container = mida_array(
     void *, {
         (void*)matrix,
         (void*)names

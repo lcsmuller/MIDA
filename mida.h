@@ -7,18 +7,27 @@ extern "C" {
 
 #include <stddef.h>
 
+#if __STDC_VERSION__ && __STDC_VERSION__ >= 199901L
+#define MIDA_SUPPORTS_C99
+#endif /* __STDC_VERSION__ */
+
 #ifdef MIDA_STATIC
 #define MIDA_API static
 #else
 #define MIDA_API extern
 #endif /* MIDA_STATIC */
 
+typedef char mida_byte;
+
+#define MIDA_BYTEMAP(_bytemap, _size)                                         \
+    mida_byte(_bytemap)[sizeof(struct mida) + (_size)]
+
 // alloc (sizeof(struct mida) - 1) + sizeof(_type[])
 // the -1 is to account for mida->data[0] which is not part of the size
 struct mida {
     size_t size;
     size_t length;
-    char data[1];
+    mida_byte data[1];
 };
 
 MIDA_API void *mida_malloc(size_t element_size, size_t count);
@@ -29,27 +38,33 @@ MIDA_API void *mida_realloc(void *ptr, size_t element_size, size_t count);
 
 MIDA_API void mida_free(void *ptr);
 
-MIDA_API void *__mida_unnamed_wrap(void *data,
-                                   const size_t type_size,
-                                   const size_t length,
-                                   void *const byte_map);
+MIDA_API void *_mida_wrap(void *data,
+                          const size_t size,
+                          const size_t length,
+                          mida_byte *const bytemap);
 
-#define __mida_unnamed_array_alloc(_type, ...)                                \
-    (char[sizeof(struct mida) + sizeof((_type[])__VA_ARGS__)])                \
+#define mida_wrap(_data, _bytemap)                                            \
+    _mida_wrap(_data, sizeof(_bytemap) - sizeof(struct mida),                 \
+               (sizeof(_bytemap) - sizeof(struct mida)) / sizeof *_data,      \
+               _bytemap)
+
+#ifdef MIDA_SUPPORTS_C99
+
+#define mida_bytemap(_size)                                                   \
+    (mida_byte[sizeof(struct mida) + _size])                                  \
     {                                                                         \
         0                                                                     \
     }
-#define mida_unnamed_array(_type, ...)                                        \
-    (_type *)(__mida_unnamed_wrap(                                            \
-        (_type[])__VA_ARGS__, sizeof((_type[])__VA_ARGS__),                   \
-        sizeof((_type[])__VA_ARGS__) / sizeof(_type),                         \
-        __mida_unnamed_array_alloc(_type, __VA_ARGS__)))
-#define mida_unnamed_struct(_type, ...)                                       \
-    mida_unnamed_array(_type, { __VA_ARGS__ })
+#define mida_array(_type, ...)                                                \
+    (_type *)(_mida_wrap((_type[])__VA_ARGS__, sizeof((_type[])__VA_ARGS__),  \
+                         sizeof((_type[])__VA_ARGS__) / sizeof(_type),        \
+                         mida_bytemap(sizeof((_type[])__VA_ARGS__))))
+#define mida_struct(_type, ...) mida_array(_type, { __VA_ARGS__ })
+
+#endif /* MIDA_SUPPORTS_C99 */
 
 #define mida_container(_base)                                                 \
-    ((const struct mida *)((char *)(_base) - offsetof(struct mida, data)))
-
+    ((const struct mida *)((mida_byte *)(_base) - offsetof(struct mida, data)))
 #define mida_sizeof(_base) mida_container(_base)->size
 #define mida_length(_base) mida_container(_base)->length
 
@@ -106,12 +121,12 @@ mida_free(void *ptr)
 }
 
 MIDA_API void *
-__mida_unnamed_wrap(void *data,
-                    const size_t size,
-                    const size_t length,
-                    void *const byte_map)
+_mida_wrap(void *data,
+           const size_t size,
+           const size_t length,
+           mida_byte *const bytemap)
 {
-    struct mida *mida = byte_map;
+    struct mida *mida = (struct mida *)bytemap;
     mida->size = size;
     mida->length = length;
     return memcpy(&mida->data, data, size);
