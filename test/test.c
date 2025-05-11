@@ -299,9 +299,9 @@ test_ext_malloc(void)
 {
     // Define a custom metadata structure with additional fields
     struct custom_metadata {
+        MIDA_EXT_METADATA;
         int flags;
         char tag[16];
-        MIDA_EXT_METADATA;
     };
 
     // Allocate memory with extended metadata
@@ -339,9 +339,9 @@ test_ext_calloc(void)
 {
     // Define a custom metadata structure with additional fields
     struct custom_metadata {
+        MIDA_EXT_METADATA;
         int flags;
         float version;
-        MIDA_EXT_METADATA;
     };
 
     // Allocate zeroed memory with extended metadata
@@ -374,8 +374,8 @@ test_ext_realloc(void)
 {
     // Define a custom metadata structure with additional fields
     struct custom_metadata {
-        char name[32];
         MIDA_EXT_METADATA;
+        char name[32];
     };
 
     // Allocate memory with extended metadata
@@ -429,8 +429,8 @@ test_ext_bytemap_wrap(void)
 {
     // Define a custom metadata structure with additional fields
     struct custom_metadata {
-        unsigned long id;
         MIDA_EXT_METADATA;
+        unsigned long id;
     };
 
     // Create original data
@@ -465,8 +465,8 @@ test_ext_compound_literals(void)
 {
     // Define a custom metadata structure with additional fields
     struct custom_metadata {
-        long timestamp;
         MIDA_EXT_METADATA;
+        long timestamp;
     };
 
     // Create an array with extended metadata using compound literals
@@ -516,8 +516,8 @@ test_metadata_conversion(void)
 {
     // Define a custom metadata structure
     struct custom_metadata {
-        int category;
         MIDA_EXT_METADATA;
+        int category;
     };
 
     // Allocate memory with extended metadata

@@ -56,20 +56,18 @@ typedef char mida_byte;
 /**
  * @def MIDA_EXT_METADATA
  * @brief Defines the metadata structure for MIDA
- * @note When using this macro for exxtended metadata, ensure that the
- * macro is the last thing in the struct definition.
+ * @note When using this macro for extended metadata, ensure that the
+ * macro is placed at the start of the struct definition.
  *
- * This macro defines the metadata structure that is prefixed to all data
- * managed by MIDA. It includes fields for size, length, and a flexible
- * array member for the actual data.
+ * This macro defines the metadata fields that are used by MIDA to track
+ * array size and length. The actual data will follow immediately after
+ * the structure in memory.
  */
 #define MIDA_EXT_METADATA                                                     \
     /** Total size of the data in bytes */                                    \
     size_t size;                                                              \
     /** Number of elements in the array */                                    \
-    size_t length;                                                            \
-    /** Start of the actual array data (flexible array member) */             \
-    mida_byte data[1]
+    size_t length
 
 /**
  * @struct mida_metadata
@@ -77,12 +75,7 @@ typedef char mida_byte;
  *
  * This structure is prefixed to all data managed by MIDA. It stores
  * information about the total size and number of elements in the array.
- * The data field is a flexible array member that marks the start of
- * the actual array data.
- *
- * @note The size calculation for allocation is (sizeof(struct mida_metadata) -
- * 1) + sizeof(_type[]), where the -1 accounts for mida_metadata->data[0] which
- * is part of the struct but not counted in the size.
+ * The actual data immediately follows this structure in memory.
  */
 struct mida_metadata {
     MIDA_EXT_METADATA;
@@ -96,13 +89,11 @@ struct mida_metadata {
  * and the actual data.
  *
  * @param container_size Size of the container structure
- * @param mida_offset Offset to the metadata within the container
  * @param element_size Size of each element in the array
  * @param count Number of elements to allocate
  * @return Pointer to the allocated data (not the container)
  */
 MIDA_API void *__mida_malloc(const size_t container_size,
-                             const ptrdiff_t mida_offset,
                              const size_t element_size,
                              const size_t count);
 
@@ -120,8 +111,7 @@ MIDA_API void *__mida_malloc(const size_t container_size,
  * @return Pointer to the allocated array (not the container)
  */
 #define mida_ext_malloc(_container, _element_size, _count)                    \
-    __mida_malloc(sizeof(_container), offsetof(_container, size),             \
-                  _element_size, _count)
+    __mida_malloc(sizeof(_container), _element_size, _count)
 
 /**
  * @def mida_malloc(_element_size, _count)
@@ -145,13 +135,11 @@ MIDA_API void *__mida_malloc(const size_t container_size,
  * container and the actual data.
  *
  * @param container_size Size of the container structure
- * @param mida_offset Offset to the metadata within the container
  * @param element_size Size of each element in the array
  * @param count Number of elements to allocate
  * @return Pointer to the allocated data (not the container)
  */
 MIDA_API void *__mida_calloc(const size_t container_size,
-                             const ptrdiff_t mida_offset,
                              const size_t element_size,
                              const size_t count);
 
@@ -169,8 +157,7 @@ MIDA_API void *__mida_calloc(const size_t container_size,
  * @return Pointer to the allocated array (not the container)
  */
 #define mida_ext_calloc(_container, _element_size, _count)                    \
-    __mida_calloc(sizeof(_container), offsetof(_container, size),             \
-                  _element_size, _count)
+    __mida_calloc(sizeof(_container), _element_size, _count)
 
 /**
  * @def mida_calloc(_element_size, _count)
@@ -194,16 +181,12 @@ MIDA_API void *__mida_calloc(const size_t container_size,
  * container and the actual data.
  *
  * @param container_size Size of the container structure
- * @param container_offset Offset from the data pointer to the container
- * @param mida_offset Offset to the metadata within the container
  * @param base Pointer to the original data (not the container)
  * @param element_size Size of each element in the array
  * @param count New number of elements to allocate
  * @return Pointer to the reallocated data (not the container)
  */
 MIDA_API void *__mida_realloc(const size_t container_size,
-                              const ptrdiff_t container_offset,
-                              const ptrdiff_t mida_offset,
                               void *base,
                               const size_t element_size,
                               const size_t count);
@@ -222,8 +205,7 @@ MIDA_API void *__mida_realloc(const size_t container_size,
  * @return Pointer to the reallocated array (not the container)
  */
 #define mida_ext_realloc(_container, _base, _element_size, _count)            \
-    __mida_realloc(sizeof(_container), -offsetof(_container, data),           \
-                   offsetof(_container, size), _base, _element_size, _count)
+    __mida_realloc(sizeof(_container), _base, _element_size, _count)
 
 /**
  * @def mida_realloc(_base, _element_size, _count)
@@ -247,10 +229,9 @@ MIDA_API void *__mida_realloc(const size_t container_size,
  * mida_ext_free macros. It frees memory for both the metadata container and
  * the actual data.
  *
- * @param container_offset Offset from the data pointer to the container
  * @param base Pointer to the data (not the container)
  */
-MIDA_API void __mida_free(const ptrdiff_t container_offset, void *base);
+MIDA_API void __mida_free(const size_t container_size, void *base);
 
 /**
  * @def mida_ext_free(_container, _base)
@@ -261,8 +242,7 @@ MIDA_API void __mida_free(const ptrdiff_t container_offset, void *base);
  * @param _container Type of the container structure
  * @param _base Pointer to the data (not the container)
  */
-#define mida_ext_free(_container, _base)                                      \
-    __mida_free(-offsetof(_container, data), _base)
+#define mida_ext_free(_container, _base) __mida_free(sizeof(_container), _base)
 
 /**
  * @def mida_free(_base)
@@ -280,14 +260,14 @@ MIDA_API void __mida_free(const ptrdiff_t container_offset, void *base);
  * This is the core wrapping function used by the mida_wrap and mida_ext_wrap
  * macros. It wraps existing data with metadata using a bytemap.
  *
- * @param mida_offset Offset to the metadata within the container
+ * @param container_size Size of the container structure
  * @param data Pointer to the original data
  * @param size Size of the data in bytes
  * @param length Number of elements in the data
  * @param bytemap Pointer to the bytemap buffer
  * @return Pointer to the wrapped data (not the container)
  */
-MIDA_API void *__mida_wrap(const ptrdiff_t mida_offset,
+MIDA_API void *__mida_wrap(const size_t container_size,
                            void *data,
                            const size_t size,
                            const size_t length,
@@ -305,10 +285,9 @@ MIDA_API void *__mida_wrap(const ptrdiff_t mida_offset,
  * @return Pointer to the wrapped data (not the container)
  */
 #define mida_ext_wrap(_container, _data, _bytemap)                            \
-    __mida_wrap(offsetof(_container, size), _data,                            \
-                sizeof(_bytemap) - sizeof(_container),                        \
-                (sizeof(_bytemap) - sizeof(_container)) / sizeof *_data,      \
-                _bytemap)
+    __mida_wrap(                                                              \
+        sizeof(_container), _data, sizeof(_bytemap) - sizeof(_container),     \
+        (sizeof(_bytemap) - sizeof(_container)) / sizeof *_data, _bytemap)
 
 /**
  * @def mida_wrap(_data, _bytemap)
@@ -365,10 +344,11 @@ MIDA_API void *__mida_wrap(const ptrdiff_t mida_offset,
  * @return Pointer to the array with extended MIDA metadata
  */
 #define mida_ext_array(_container, _type, ...)                                \
-    (_type *)(__mida_wrap(offsetof(_container, size), (_type[])__VA_ARGS__,   \
-                          sizeof((_type[])__VA_ARGS__),                       \
-                          sizeof((_type[])__VA_ARGS__) / sizeof(_type),       \
-                          mida_bytemap(sizeof((_type[])__VA_ARGS__))))
+    (_type *)(__mida_wrap(                                                    \
+        sizeof(_container), (_type[])__VA_ARGS__,                             \
+        sizeof((_type[])__VA_ARGS__),                                         \
+        sizeof((_type[])__VA_ARGS__) / sizeof(_type),                         \
+        mida_ext_bytemap(_container, sizeof((_type[])__VA_ARGS__))))
 
 /**
  * @def mida_array(_type, ...)
@@ -427,7 +407,7 @@ MIDA_API void *__mida_wrap(const ptrdiff_t mida_offset,
  * @return Pointer to the extended container structure containing the metadata
  */
 #define mida_ext_container(_container, _base)                                 \
-    ((_container *)((mida_byte *)(_base) - offsetof(_container, data)))
+    ((_container *)((mida_byte *)(_base) - sizeof(_container)))
 
 /**
  * @def mida_container(_base)
@@ -486,82 +466,85 @@ MIDA_API void *__mida_wrap(const ptrdiff_t mida_offset,
 #include <string.h>
 #include <stdlib.h>
 
+#define __mida_data_from_container(_container_ptr, _container_size)           \
+    ((mida_byte *)_container_ptr + _container_size)
+#define __mida_container_from_data(_data_ptr, _container_size)                \
+    ((mida_byte *)_data_ptr - _container_size)
+
 MIDA_API void *
 __mida_malloc(const size_t container_size,
-              const ptrdiff_t mida_offset,
               const size_t element_size,
               const size_t count)
 {
     const size_t data_size = element_size * count,
-                 total_size = container_size - 1 + data_size;
+                 total_size = container_size + data_size;
     mida_byte *container = malloc(total_size);
-    struct mida_metadata *mida =
-        (struct mida_metadata *)(container + mida_offset);
+    struct mida_metadata *mida = (struct mida_metadata *)container;
     if (!container) return NULL;
     mida->size = data_size;
     mida->length = count;
-    return &mida->data;
+    return __mida_data_from_container(container, container_size);
 }
 
 MIDA_API void *
 __mida_calloc(const size_t container_size,
-              const ptrdiff_t mida_offset,
               const size_t element_size,
               const size_t count)
 {
     const size_t data_size = element_size * count,
-                 total_size = container_size - 1 + data_size;
+                 total_size = container_size + data_size;
     mida_byte *container = calloc(1, total_size);
-    struct mida_metadata *mida =
-        (struct mida_metadata *)(container + mida_offset);
+    struct mida_metadata *mida = (struct mida_metadata *)container;
     if (!container) return NULL;
     mida->size = data_size;
     mida->length = count;
-    return &mida->data;
+    return __mida_data_from_container(container, container_size);
 }
 
 MIDA_API void *
 __mida_realloc(const size_t container_size,
-               const ptrdiff_t container_offset,
-               const ptrdiff_t mida_offset,
                void *base,
                const size_t element_size,
                const size_t count)
 {
     if (base) {
         const size_t data_size = element_size * count,
-                     total_size = container_size - 1 + data_size;
-        mida_byte *original_container = (mida_byte *)base + container_offset;
+                     total_size = container_size + data_size;
+        mida_byte *original_container =
+            __mida_container_from_data(base, container_size);
         mida_byte *container = realloc(original_container, total_size);
-        struct mida_metadata *mida =
-            (struct mida_metadata *)(container + mida_offset);
+        struct mida_metadata *mida = (struct mida_metadata *)container;
         if (!container) return NULL;
         mida->size = data_size;
         mida->length = count;
-        return &mida->data;
+        return __mida_data_from_container(container, container_size);
     }
-    return __mida_malloc(container_size, mida_offset, element_size, count);
+    return __mida_malloc(container_size, element_size, count);
 }
 
 MIDA_API void
-__mida_free(const ptrdiff_t container_offset, void *base)
+__mida_free(const size_t container_size, void *base)
 {
-    free((mida_byte *)base + container_offset);
+    mida_byte *container = __mida_container_from_data(base, container_size);
+    free(container);
 }
 
 MIDA_API void *
-__mida_wrap(const ptrdiff_t mida_offset,
+__mida_wrap(const size_t container_size,
             void *data,
             const size_t size,
             const size_t length,
             mida_byte *const container)
 {
-    struct mida_metadata *mida =
-        (struct mida_metadata *)(container + mida_offset);
+    struct mida_metadata *mida = (struct mida_metadata *)container;
     mida->size = size;
     mida->length = length;
-    return memcpy(&mida->data, data, size);
+    return memcpy(__mida_data_from_container(container, container_size), data,
+                  size);
 }
+
+#undef _mida_data_from_container
+#undef _mida_container_from_data
 
 #endif /* MIDA_HEADER */
 

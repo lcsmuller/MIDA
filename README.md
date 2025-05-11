@@ -109,9 +109,9 @@ You can define custom metadata structures with additional fields:
 ```c
 // Define a custom metadata structure with extra fields
 struct my_metadata {
-    int flags;          // Custom field added before MIDA_EXT_METADATA
-    char tag[16];       // Custom field added before MIDA_EXT_METADATA
-    MIDA_EXT_METADATA;  // Must be the last field in the struct
+    MIDA_EXT_METADATA;  // Must be the first field in the struct
+    int flags;          // Custom field added after MIDA_EXT_METADATA
+    char tag[16];       // Custom field added after MIDA_EXT_METADATA
 };
 
 // Use extended malloc to allocate with custom metadata
