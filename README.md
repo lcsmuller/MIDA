@@ -12,6 +12,7 @@ MIDA is a single-header library that attaches size and length metadata to C nati
 - **Familiar API** through wrappers for `malloc`, `calloc`, `realloc`, and `free`
 - **Compound literal support** for creating arrays with metadata attached
 - **Nested structure support** for complex data structures
+- **Custom metadata extensions** for adding your own metadata fields
 - **No dependencies** beyond standard C libraries
 - **Header-only** implementation for easy integration
 - **Zero overhead** for accessing array elements
@@ -101,6 +102,33 @@ data = mida_realloc(data, sizeof(float), 20);
 mida_free(data);
 ```
 
+### Using Extended Metadata
+
+You can define custom metadata structures with additional fields:
+
+```c
+// Define a custom metadata structure with extra fields
+struct my_metadata {
+    int flags;          // Custom field added before MIDA_EXT_METADATA
+    char tag[16];       // Custom field added before MIDA_EXT_METADATA
+    MIDA_EXT_METADATA;  // Must be the last field in the struct
+};
+
+// Use extended malloc to allocate with custom metadata
+int *array = mida_ext_malloc(struct my_metadata, sizeof(int), 10);
+
+// Access the custom metadata through the container
+struct my_metadata *meta = mida_ext_container(struct my_metadata, array);
+meta->flags = 0x1;
+strcpy(meta->tag, "important");
+
+// Standard metadata still works
+printf("Array length: %zu\n", mida_ext_length(struct my_metadata, array));
+
+// Clean up with extended free
+mida_ext_free(struct my_metadata, array);
+```
+
 ## C89 Compatibility Mode (without Compound Literals)
 
 MIDA provides an alternative API for C89 compatibility:
@@ -117,6 +145,27 @@ int *wrapped = mida_wrap(data, bytemap);
 printf("Length: %zu\n", mida_length(wrapped)); // 5
 ```
 
+For extended metadata in C89:
+
+```c
+// Define custom metadata structure
+struct my_metadata {
+    MIDA_EXT_METADATA;
+    int flags;
+};
+
+// Create an extended bytemap
+int data[] = {1, 2, 3, 4, 5};
+MIDA_EXT_BYTEMAP(struct my_metadata, bytemap, sizeof(data));
+
+// Wrap with extended metadata
+int *wrapped = mida_ext_wrap(struct my_metadata, data, bytemap);
+
+// Access extended metadata
+struct my_metadata *meta = mida_ext_container(struct my_metadata, wrapped);
+meta->flags = 1;
+```
+
 ## Memory Management
 
 MIDA uses a clever approach to store metadata alongside the array data. Each mida-managed array is prefixed with a small header containing:
@@ -127,7 +176,7 @@ MIDA uses a clever approach to store metadata alongside the array data. Each mid
 The actual array data follows this header, allowing normal array access syntax while maintaining metadata access through helper macros. Here's a simplified view of the memory layout:
 
 ```
-Memory Layout:
+Standard Memory Layout:
 +---------------+------------------+
 | MIDA METADATA | ACTUAL ARRAY DATA|
 | size, length  | [0][1][2]...[n]  |
@@ -135,6 +184,16 @@ Memory Layout:
                 ^
                 |
          Pointer returned to user
+
+Extended Memory Layout:
++---------------------+------------------+
+| EXTENDED METADATA   | ACTUAL ARRAY DATA|
+| custom fields,      | [0][1][2]...[n]  |
+| size, length        |                  |
++---------------------+------------------+
+                      ^
+                      |
+               Pointer returned to user
 ```
 
 ## Mixing with Regular C Arrays
@@ -176,6 +235,15 @@ printf("Name: %s\n", n[1]); // "Bob"
 | `void *mida_realloc(void *ptr, size_t element_size, size_t count)` | Resizes memory with metadata for `count` elements of size `element_size` |
 | `void mida_free(void *ptr)` | Frees memory allocated with MIDA functions |
 
+### Extended Functions (Custom Metadata)
+
+| Function | Description |
+|----------|-------------|
+| `void *mida_ext_malloc(container_type, size_t element_size, size_t count)` | Allocates memory with extended metadata |
+| `void *mida_ext_calloc(container_type, size_t element_size, size_t count)` | Allocates zeroed memory with extended metadata |
+| `void *mida_ext_realloc(container_type, void *ptr, size_t element_size, size_t count)` | Resizes memory with extended metadata |
+| `void mida_ext_free(container_type, void *ptr)` | Frees memory with extended metadata |
+
 ### C99 Macros (Compound Literals)
 
 | Macro | Description |
@@ -183,13 +251,18 @@ printf("Name: %s\n", n[1]); // "Bob"
 | `mida_array(type, {...})` | Creates an array with metadata using compound literals |
 | `mida_struct(type, {...})` | Creates a structure with metadata using compound literals |
 | `mida_bytemap(size)` | Creates a bytemap buffer with the specified size (for internal use) |
+| `mida_ext_array(container_type, type, {...})` | Creates an array with extended metadata |
+| `mida_ext_struct(container_type, type, {...})` | Creates a structure with extended metadata |
+| `mida_ext_bytemap(container_type, size)` | Creates a bytemap for extended metadata |
 
 ### C89 Compatibility Macros
 
 | Macro | Description |
 |-------|-------------|
 | `MIDA_BYTEMAP(bytemap, size)` | Defines a bytemap buffer to hold metadata and data |
+| `MIDA_EXT_BYTEMAP(container_type, bytemap, size)` | Defines a bytemap for extended metadata |
 | `mida_wrap(data, bytemap)` | Wraps existing data with metadata using a bytemap buffer |
+| `mida_ext_wrap(container_type, data, bytemap)` | Wraps data with extended metadata |
 
 ### Metadata Access Macros
 
@@ -198,10 +271,19 @@ printf("Name: %s\n", n[1]); // "Bob"
 | `mida_sizeof(ptr)` | Gets the total size in bytes of data managed by MIDA |
 | `mida_length(ptr)` | Gets the number of elements in an array managed by MIDA |
 | `mida_container(ptr)` | Gets the container structure for a given data pointer |
+| `mida_ext_sizeof(container_type, ptr)` | Gets size for extended metadata |
+| `mida_ext_length(container_type, ptr)` | Gets length for extended metadata |
+| `mida_ext_container(container_type, ptr)` | Gets container for extended metadata |
+
+### Extended Metadata Definition
+
+| Macro | Description |
+|-------|-------------|
+| `MIDA_EXT_METADATA` | Define metadata fields in custom container structs |
 
 ## Build
 
-MIDA is single-header-only library, so it includes additional macros for more complex uses cases. `#define MIDA_STATIC` hides all mida API symbols by making them static. Also, if you want to include `mida.h` from multiple C files, to avoid duplication of symbols you may define `MIDA_HEADER` macro.
+MIDA is a single-header-only library, so it includes additional macros for more complex use cases. `#define MIDA_STATIC` hides all mida API symbols by making them static. Also, if you want to include `mida.h` from multiple C files, to avoid duplication of symbols you may define `MIDA_HEADER` macro.
 
 ```c
 /* In every .c file that uses MIDA include only declarations: */
