@@ -1,0 +1,10 @@
+# Ignore all
+*
+# But these
+!.gitignore
+!Makefile
+!array_length.c
+!complex_metadata.c
+!file_metadata.c
+!nested_metadata.c
+!timestamp.c

@@ -1,289 +1,296 @@
 # MIDA
 
-MIDA (**M**etadata **I**njection for **D**ata **A**ugmentation) is a lightweight C library that adds metadata tracking to C native structures.
+MIDA (**M**etadata **I**njection for **D**ata **A**ugmentation) is a lightweight C library that injects and manages metadata alongside C native structures.
+
+## Table of Contents
+
+- [About](#about)
+- [Key Features](#key-features)
+- [Examples](#examples)
+  - [Basic Metadata Injection](#basic-metadata-injection)
+    - [Dynamic Storage](#dynamic-storage)
+    - [Local Storage](#local-storage)
+  - [Injecting Custom Metadata](#injecting-custom-metadata)
+  - [Working with Strings](#working-with-strings)
+  - [Using C99 Compound Literals](#using-c99-compound-literals-with-custom-metadata)
+  - [Working with Nested Data Structures](#working-with-nested-data-structures)
+- [Memory Management](#memory-management)
+- [API Reference](#api-reference)
+- [Build](#build)
+- [Examples and Tests](#examples-and-tests)
+- [License](#license)
 
 ## About
 
-MIDA is a single-header library that attaches size and length metadata to C native structures. It provides wrappers for standard memory functions while transparently storing metadata alongside your data, for easy access and management. This allows you to work with arrays and other data structures without the need for manual bookkeeping, making your code cleaner and less error-prone.
+MIDA is a single-header library designed for seamless metadata injection into C data structures. This allows you to attach arbitrary metadata to your data, from simple tracking information to complex custom metadata structures. The library provides a clean API that makes metadata management transparent, letting you focus on your application logic while the metadata is handled automatically.
+
+The power of MIDA comes from its ability to inject and manage custom metadata for any data structure, giving you complete flexibility in defining what information you want to attach to your data.
 
 ## Key Features
 
-- **Size and length tracking** for arrays without manual bookkeeping
-- **Familiar API** through wrappers for `malloc`, `calloc`, `realloc`, and `free`
-- **Compound literal support** for creating arrays with metadata attached
-- **Nested structure support** for complex data structures
-- **Custom metadata extensions** for adding your own metadata fields
+- **Flexible metadata injection** for any C data structure
+- **Custom metadata structure support** for defining your own fields
+- **Zero-copy transparent access** to both data and metadata
+- **Familiar API** through wrappers for standard memory functions
+- **Compound literal support** in C99 for creating data with metadata attached
 - **No dependencies** beyond standard C libraries
 - **Header-only** implementation for easy integration
-- **Zero overhead** for accessing array elements
+- **Zero overhead** for accessing the original data
 
 ## Examples
 
-### Creating Arrays with Compound Literals
+### Basic Metadata Injection
+
+#### Dynamic Storage
 
 ```c
-// Create arrays with compound literals (using C99 designated initializers)
-int *numbers = mida_array(int, { 1, 2, 3, 4, 5 });
-char *letters = mida_array(char, { 'a', 'b', 'c', 'd' });
+// Define a custom metadata structure
+typedef struct array_metadata {
+    size_t length;
+} ArrayMD;
 
-// Access the metadata
-size_t len = mida_length(numbers);  // 5
-size_t size = mida_sizeof(numbers); // 20 bytes (5 * sizeof(int))
-
-// Use them like normal arrays
-for (size_t i = 0; i < mida_length(numbers); i++) {
-    printf("%d ", numbers[i]);  // Outputs: 1 2 3 4 5
+// Allocate an array with metadata
+int *numbers = mida_malloc(ArrayMD, sizeof(int), 5);
+// Access and set the metadata via the MIDA macro
+MIDA(ArrayMD, numbers)->length = 5;
+// Initialize data
+for (size_t i = 0; i < MIDA(ArrayMD, numbers)->length; i++) {
+    numbers[i] = i + 1;
 }
+
+printf("Array length: %zu\n", MIDA(ArrayMD, numbers)->length);  // 5
+// Clean up
+mida_free(ArrayMD, numbers);
 ```
 
-### Creating Nested Structures
+#### Local Storage
 
 ```c
-// Define a structure with nested arrays
-struct my_data {
-    int *numbers;
-    float *values;
+// Define a custom metadata structure
+typedef struct array_metadata {
+    size_t length;
+} ArrayMD;
+
+// Allocate an array with metadata
+int data[5] = {0};
+MIDA_BYTEMAP(ArrayMD, bytemap, sizeof(data));
+int *numbers = mida_wrap(ArrayMD, data, bytemap);
+
+// Access and set the metadata via the MIDA macro
+MIDA(ArrayMD, numbers)->length = sizeof(data) / sizeof(data[0]);
+// Initialize data
+for (size_t i = 0; i < MIDA(ArrayMD, numbers)->length; i++) {
+    numbers[i] = i + 1;
+}
+
+printf("Array length: %zu\n", MIDA(ArrayMD, numbers)->length);  // 5
+```
+
+### Injecting Custom Metadata
+
+```c
+// Define custom metadata with your own fields
+struct custom_metadata {
+    int flags;
+    char *owner;
+    double timestamp;
 };
 
-// Create a structure with metadata
-struct my_data *data = mida_struct(
-    struct my_data, {
-        .numbers = mida_array(int, { 1, 2, 3 }),
-        .values = mida_array(float, { 1.0f, 2.0f, 3.0f })
-    }
-);
+// Allocate data with custom metadata
+float *data = mida_malloc(struct custom_metadata, sizeof(float), 10);
 
-// Access data and metadata
-printf("Number of elements: %zu\n", mida_length(data->numbers)); // 3
-printf("First value: %f\n", data->values[0]); // 1.0
-```
-
-### Deep Nesting
-
-```c
-// Create deeply nested arrays (like a 2D string array)
-char ***nested = mida_array(
-    char **, {
-        mida_array(char *, { 
-            mida_array(char, { 'f', 'o', 'o', '\0' }),
-            mida_array(char, { 'b', 'a', 'r', '\0' })
-        }),
-        mida_array(char *, {
-            mida_array(char, { 'h', 'i', '\0' })
-        })
-    }
-);
-
-// Access elements from deep nesting
-printf("%s %s\n", nested[0][0], nested[0][1]); // "foo bar"
-printf("%s\n", nested[1][0]); // "hi"
-
-// Access metadata at any level
-printf("Outer length: %zu\n", mida_length(nested)); // 2
-printf("Inner length: %zu\n", mida_length(nested[0])); // 2
-printf("String length: %zu\n", mida_length(nested[0][0])); // 4 (including \0)
-```
-
-### Using Memory Management Functions
-
-```c
-// Allocate a new array
-float *data = mida_malloc(sizeof(float), 10);
-
-// Initialize the array
-for (size_t i = 0; i < mida_length(data); i++) {
+// Access the custom metadata
+MIDA(struct custom_metadata, data)->flags = 0x1;
+MIDA(struct custom_metadata, data)->owner = "example_user";
+MIDA(struct custom_metadata, data)->timestamp = 1625000000.0;
+// Use the data normally
+for (size_t i = 0; i < 10; i++) {
     data[i] = (float)i * 1.5f;
 }
 
-// Resize the array
-data = mida_realloc(data, sizeof(float), 20);
-
-// Free the array when done
-mida_free(data);
+// Clean up
+mida_free(struct custom_metadata, data);
 ```
 
-### Using Extended Metadata
+### Working with Strings
 
-You can define custom metadata structures with additional fields:
+MIDA provides convenient functions for handling strings with metadata:
 
 ```c
-// Define a custom metadata structure with extra fields
-struct my_metadata {
-    MIDA_EXT_METADATA;  // Must be the first field in the struct
-    int flags;          // Custom field added after MIDA_EXT_METADATA
-    char tag[16];       // Custom field added after MIDA_EXT_METADATA
-};
+// Define a metadata structure for strings
+typedef struct string_metadata {
+    size_t length;
+} StrMD;
 
-// Use extended malloc to allocate with custom metadata
-int *array = mida_ext_malloc(struct my_metadata, sizeof(int), 10);
+// Create a string with metadata
+char *message = mida_string(StrMD, "Hello, World!");
+// Set the length
+MIDA(StrMD, message)->length = strlen(message);
+// Access and use like a normal string
+printf("String length: %zu\n", MIDA(StrMD, message)->length);  // 13
+printf("Message: %s\n", message);
+printf("First character: %c\n", message[0]);  // 'H'
 
-// Access the custom metadata through the container
-struct my_metadata *meta = mida_ext_container(struct my_metadata, array);
-meta->flags = 0x1;
-strcpy(meta->tag, "important");
+// Create strings with custom metadata
+typedef struct extended_string_metadata {
+    size_t length;
+    char *language;
+    time_t created;
+} ExtendedStrMD;
 
-// Standard metadata still works
-printf("Array length: %zu\n", mida_ext_length(struct my_metadata, array));
-
-// Clean up with extended free
-mida_ext_free(struct my_metadata, array);
+char *greeting = mida_string(ExtendedStrMD, "Good morning!");
+// Access the custom metadata
+MIDA(ExtendedStrMD, greeting)->length = strlen(greeting);
+MIDA(ExtendedStrMD, greeting)->language = "English";
+MIDA(ExtendedStrMD, greeting)->created = time(NULL);
+// String functions still work normally
+printf("Greeting length (standard): %zu\n", strlen(greeting));
+printf("Greeting length (MIDA): %zu\n", MIDA(ExtendedStrMD, greeting)->length);
+// Fully compatible with standard C string functions
+if (strcmp(greeting, "Good morning!") == 0) {
+    printf("Strings match!\n");
+}
 ```
 
-## C89 Compatibility Mode (without Compound Literals)
-
-MIDA provides an alternative API for C89 compatibility:
-
-```c
-// Create a bytemap buffer to hold data and metadata
-int data[] = {1, 2, 3, 4, 5};
-MIDA_BYTEMAP(bytemap, sizeof(data));
-
-// Wrap existing data with metadata
-int *wrapped = mida_wrap(data, bytemap);
-
-// Access metadata as usual
-printf("Length: %zu\n", mida_length(wrapped)); // 5
-```
-
-For extended metadata in C89:
+### Using C99 Compound Literals with Custom Metadata
 
 ```c
 // Define custom metadata structure
-struct my_metadata {
-    MIDA_EXT_METADATA;
-    int flags;
+typedef struct file_metadata {
+    char *filename;
+    unsigned long permissions;
+    time_t modified;
+} FileMD;
+
+// Create a struct with custom metadata using compound literals
+struct point {
+    double x, y, z;
 };
 
-// Create an extended bytemap
-int data[] = {1, 2, 3, 4, 5};
-MIDA_EXT_BYTEMAP(struct my_metadata, bytemap, sizeof(data));
+struct point *location = mida_struct(
+    FileMD,
+    struct point, {
+        .x = 10.5,
+        .y = 20.3,
+        .z = 5.7
+    }
+);
+// Set custom metadata
+MIDA(FileMD, location)->filename = "point_data.bin";
+MIDA(FileMD, location)->permissions = 0644;
+MIDA(FileMD, location)->modified = time(NULL);
+// Use the data as normal
+printf("Location: (%f, %f, %f)\n", location->x, location->y, location->z);
+```
 
-// Wrap with extended metadata
-int *wrapped = mida_ext_wrap(struct my_metadata, data, bytemap);
+### Working with Nested Data Structures
 
-// Access extended metadata
-struct my_metadata *meta = mida_ext_container(struct my_metadata, wrapped);
-meta->flags = 1;
+```c
+// Create a complex structure with metadata at multiple levels
+struct person {
+    char *name;
+    int *scores;
+    struct person *manager;
+};
+
+// Different metadata for different parts
+typedef struct name_meta {
+    size_t length;
+    const char *language;
+} NameMD;
+
+typedef struct scores_meta {
+    size_t count;
+    const char *subject;
+    double average;
+} ScoresMD;
+
+typedef struct manager_meta {
+    int department_id;
+} ManagerMD;
+
+// Create the structure with different metadata at each level
+struct person employee = {
+    .name = mida_string(NameMD, "John Doe"),
+    .scores = mida_array(ScoresMD, int, {85, 92, 78, 90}),
+    .manager = mida_struct(ManagerMD, struct person, {
+        .name = mida_string(NameMD, "Boss"),
+        .scores = NULL,
+        .manager = NULL
+    })
+};
+
+// Access and set specific metadata for each component
+NameMD *name_info = MIDA(NameMD, employee.name);
+name_info->length = strlen(employee.name);
+name_info->language = "English";
+
+ScoresMD *scores_info = MIDA(ScoresMD, employee.scores);
+scores_info->count = 4;
+scores_info->subject = "Computer Science";
+scores_info->average = 86.25;
+
+ManagerMD *mgr_info = MIDA(ManagerMD, employee.manager);
+mgr_info->department_id = 42;
+
+// Use the data naturally
+printf("Employee: %s, Average: %.2f, Manager: %s, Dept: %d\n",
+       employee.name, scores_info.average, employee.manager->name, mgr_info->department_id);
 ```
 
 ## Memory Management
 
-MIDA uses a clever approach to store metadata alongside the array data. Each mida-managed array is prefixed with a small header containing:
+MIDA uses a clever approach to store metadata alongside your data. The metadata is stored immediately before the data pointer that's returned to you, allowing for:
 
-- `size`: The total size of the array in bytes
-- `length`: The number of elements in the array
+1. Direct access to your data with zero overhead
+2. Easy retrieval of metadata when needed
+3. Transparent memory management
 
-The actual array data follows this header, allowing normal array access syntax while maintaining metadata access through helper macros. Here's a simplified view of the memory layout:
+Here's a simplified view of the memory layout:
 
 ```
-Standard Memory Layout:
-+---------------+------------------+
-| MIDA METADATA | ACTUAL ARRAY DATA|
-| size, length  | [0][1][2]...[n]  |
-+---------------+------------------+
-                ^
-                |
-         Pointer returned to user
-
-Extended Memory Layout:
-+---------------------+------------------+
-| EXTENDED METADATA   | ACTUAL ARRAY DATA|
-| custom fields,      | [0][1][2]...[n]  |
-| size, length        |                  |
-+---------------------+------------------+
-                      ^
-                      |
-               Pointer returned to user
-```
-
-## Mixing with Regular C Arrays
-
-You can also use MIDA to wrap only the outermost container while using regular C arrays inside:
-
-```c
-// Regular C arrays
-int matrix[][2] = { {1, 2}, {3, 4} };
-const char *names[] = {"Alice", "Bob"};
-
-// Wrap in a MIDA container
-void **container = mida_array(
-    void *, {
-        (void*)matrix,
-        (void*)names
-    }
-);
-
-// Only the container has metadata
-printf("Container size: %zu\n", mida_length(container)); // 2
-
-// Access inner arrays normally (casting back to appropriate type)
-int (*m)[2] = (int(*)[2])container[0];
-printf("Matrix value: %d\n", m[1][0]); // 3
-
-const char **n = (const char**)container[1];
-printf("Name: %s\n", n[1]); // "Bob"
+Memory Layout:
++------------------+------------------+
+| CUSTOM METADATA  | ACTUAL DATA      |
+| (your structure) | [your data here] |
++------------------+------------------+
+                   ^
+                   |
+            Pointer returned to user
 ```
 
 ## API Reference
 
-### Core Functions
+### Core Metadata Function
 
 | Function | Description |
 |----------|-------------|
-| `void *mida_malloc(size_t element_size, size_t count)` | Allocates memory with metadata for `count` elements of size `element_size` |
-| `void *mida_calloc(size_t element_size, size_t count)` | Allocates zeroed memory with metadata for `count` elements of size `element_size` |
-| `void *mida_realloc(void *ptr, size_t element_size, size_t count)` | Resizes memory with metadata for `count` elements of size `element_size` |
-| `void mida_free(void *ptr)` | Frees memory allocated with MIDA functions |
+| `MIDA(container_type, ptr)` | Gets the container structure for a given data pointer |
 
-### Extended Functions (Custom Metadata)
+### Memory Management Functions
 
 | Function | Description |
 |----------|-------------|
-| `void *mida_ext_malloc(container_type, size_t element_size, size_t count)` | Allocates memory with extended metadata |
-| `void *mida_ext_calloc(container_type, size_t element_size, size_t count)` | Allocates zeroed memory with extended metadata |
-| `void *mida_ext_realloc(container_type, void *ptr, size_t element_size, size_t count)` | Resizes memory with extended metadata |
-| `void mida_ext_free(container_type, void *ptr)` | Frees memory with extended metadata |
+| `mida_malloc(container_type, element_size, count)` | Allocates memory with metadata |
+| `mida_calloc(container_type, element_size, count)` | Allocates zeroed memory with metadata |
+| `mida_realloc(container_type, base, element_size, count)` | Resizes memory with metadata |
+| `mida_free(container_type, base)` | Frees memory with metadata |
+| `MIDA_BYTEMAP(container_type, bytemap, size)` | Defines a bytemap buffer for local storage metadata |
+| `mida_nwrap(container_type, data, bytemap, bytemap_size)` | Wraps data with metadata with bytemap size |
+| `mida_wrap(container_type, data, bytemap)` | Wraps data with metadata |
 
 ### C99 Macros (Compound Literals)
 
 | Macro | Description |
 |-------|-------------|
-| `mida_array(type, {...})` | Creates an array with metadata using compound literals |
-| `mida_struct(type, {...})` | Creates a structure with metadata using compound literals |
-| `mida_bytemap(size)` | Creates a bytemap buffer with the specified size (for internal use) |
-| `mida_ext_array(container_type, type, {...})` | Creates an array with extended metadata |
-| `mida_ext_struct(container_type, type, {...})` | Creates a structure with extended metadata |
-| `mida_ext_bytemap(container_type, size)` | Creates a bytemap for extended metadata |
-
-### C89 Compatibility Macros
-
-| Macro | Description |
-|-------|-------------|
-| `MIDA_BYTEMAP(bytemap, size)` | Defines a bytemap buffer to hold metadata and data |
-| `MIDA_EXT_BYTEMAP(container_type, bytemap, size)` | Defines a bytemap for extended metadata |
-| `mida_wrap(data, bytemap)` | Wraps existing data with metadata using a bytemap buffer |
-| `mida_ext_wrap(container_type, data, bytemap)` | Wraps data with extended metadata |
-
-### Metadata Access Macros
-
-| Macro | Description |
-|-------|-------------|
-| `mida_sizeof(ptr)` | Gets the total size in bytes of data managed by MIDA |
-| `mida_length(ptr)` | Gets the number of elements in an array managed by MIDA |
-| `mida_container(ptr)` | Gets the container structure for a given data pointer |
-| `mida_ext_sizeof(container_type, ptr)` | Gets size for extended metadata |
-| `mida_ext_length(container_type, ptr)` | Gets length for extended metadata |
-| `mida_ext_container(container_type, ptr)` | Gets container for extended metadata |
-
-### Extended Metadata Definition
-
-| Macro | Description |
-|-------|-------------|
-| `MIDA_EXT_METADATA` | Define metadata fields in custom container structs |
+| `mida_array(container_type, type, {...})` | Creates an unnamed array with metadata |
+| `mida_struct(container_type, type, {...})` | Creates an unnamed structure with metadata |
+| `mida_string(container_type, string)` | Creates a string-literal with metadata |
+| `mida_bytemap(container_type, size)` | Creates a unnamed bytemap for metadata |
 
 ## Build
 
-MIDA is a single-header-only library, so it includes additional macros for more complex use cases. `#define MIDA_STATIC` hides all mida API symbols by making them static. Also, if you want to include `mida.h` from multiple C files, to avoid duplication of symbols you may define `MIDA_HEADER` macro.
+MIDA is a single-header-only library with flexible inclusion options:
 
 ```c
 /* In every .c file that uses MIDA include only declarations: */
@@ -293,6 +300,17 @@ MIDA is a single-header-only library, so it includes additional macros for more 
 /* Additionally, create one mida.c file for MIDA implementation: */
 #include "mida.h"
 ```
+
+To make all MIDA functions static (to avoid symbol conflicts), use:
+
+```c
+#define MIDA_STATIC
+#include "mida.h"
+```
+
+## Examples and Tests
+
+For more examples and tests, please refer to the [examples](examples) and [tests](tests) directories in the repository.
 
 ## License
 
