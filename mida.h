@@ -111,7 +111,7 @@ MIDA_API void *__mida_realloc(const size_t container_size,
  * @param _container Type of the container structure
  * @param _base Pointer to the data (not the container)
  */
-#define mida_free(_container, _base) free(MIDA(_container, _base));
+#define mida_free(_container, _base) free(MIDA(_container, _base))
 
 MIDA_API void *__mida_nwrap(const size_t container_size,
                             void *data,
