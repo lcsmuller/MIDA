@@ -16,15 +16,13 @@ int
 main()
 {
     // Create a buffer with file metadata
-    const char *content = "This is some example file content.\n"
-                          "It has multiple lines of text.\n"
-                          "It could represent a document or any other file.";
-
-    // Create a bytemap for our metadata and data
-    MIDA_BYTEMAP(FileMD, bytemap, strlen(content) + 1);
+    char content[] = "This is some example file content.\n"
+                     "It has multiple lines of text.\n"
+                     "It could represent a document or any other file.";
 
     // Wrap the data with metadata
-    char *file_data = mida_wrap(FileMD, (void *)content, bytemap);
+    char *file_data =
+        mida_wrap(FileMD, content, mida_bytemap(FileMD, sizeof(content)));
 
     // Set the metadata
     FileMD *meta = MIDA(FileMD, file_data);

@@ -86,6 +86,18 @@ for (size_t i = 0; i < MIDA(ArrayMD, numbers)->length; i++) {
 printf("Array length: %zu\n", MIDA(ArrayMD, numbers)->length);  // 5
 ```
 
+Or if you want to use C99 compound literals, you can skip the `MIDA_BYTEMAP` macro, and
+use `mida_bytemap` directly in the `mida_wrap` function:
+
+```c
+... // Previous code
+
+int data[5] = {0};
+int *numbers = mida_wrap(ArrayMD, data, mida_bytemap(ArrayMD, sizeof(data)));
+
+... // Continue with the rest of the code
+```
+
 ### Injecting Custom Metadata
 
 ```c

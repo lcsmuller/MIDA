@@ -123,24 +123,19 @@ test_init_bytemap(void)
     };
 
     int zx[] = { 1, 2, 3 };
-    MIDA_BYTEMAP(MD, bytemap_zx, sizeof(zx));
     float zy[] = { 1.0f, 2.0f };
-    MIDA_BYTEMAP(MD, bytemap_zy, sizeof(zy));
     struct test z = {
-        test_wrap(zx, bytemap_zx),
-        test_wrap(zy, bytemap_zy),
+        test_wrap(zx, mida_bytemap(MD, sizeof(zx))),
+        test_wrap(zy, mida_bytemap(MD, sizeof(zy))),
         NULL,
     };
-    MIDA_BYTEMAP(MD, bytemap_z, sizeof(z));
 
     int x[] = { 1, 2, 3 };
-    MIDA_BYTEMAP(MD, bytemap_x, sizeof(x));
     float y[] = { 1.0f, 2.0f, 3.0f, 4.0f };
-    MIDA_BYTEMAP(MD, bytemap_y, sizeof(y));
     struct test foo = {
-        test_wrap(x, bytemap_x),
-        test_wrap(y, bytemap_y),
-        test_wrap(&z, bytemap_z),
+        test_wrap(x, mida_bytemap(MD, sizeof(x))),
+        test_wrap(x, mida_bytemap(MD, sizeof(y))),
+        test_wrap(&z, mida_bytemap(MD, sizeof(z))),
     };
 
     ASSERT_EQ(3, MIDA(MD, foo.x)->length);
@@ -349,14 +344,13 @@ test_shallow_mida_deep_nesting(void)
     struct {
         void **mixed_array;
     } container = {
-        .mixed_array =
-            test_array(void *,
-                       {
-                           (void *)regular_strings, // Regular array of strings
-                           (void *)regular_2d_array, // Regular 2D array
-                           (void *)(const char *[]){ "foo", "bar",
-                                                     "baz" } // Unnamed array
-                       })
+        .mixed_array = test_array(
+            void *,
+            {
+                regular_strings, // Regular array of strings
+                regular_2d_array, // Regular 2D array
+                (const char *[]){ "foo", "bar", "baz" } // Unnamed array
+            })
     };
 
     // Test that the outermost array has metadata
