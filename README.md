@@ -320,6 +320,38 @@ To make all MIDA functions static (to avoid symbol conflicts), use:
 #include "mida.h"
 ```
 
+### Hidden signature header (enabled by default)
+
+MIDA writes a small, hidden signature prefix before the metadata container to
+help detect misuse (like passing a non-MIDA pointer to MIDA macros). This is
+enabled by default.
+
+Notes:
+
+- When enabled, the buffer layout becomes: `[SIGNATURE (padded)] [CONTAINER] [DATA]`.
+- Public APIs remain the same; `MIDA`, `mida_malloc`, etc. are unchanged.
+- `mida_free` is updated internally to free the full buffer.
+- Local bytemaps (mida_bytemap/MIDA_BYTEMAP) automatically account for the prefix.
+- A helper macro `mida_is_valid(ContainerType, base)` returns 1 when the
+    signature matches, 0 otherwise (always 1 when the feature is disabled).
+
+Overriding behavior (GCC/Clang examples):
+
+```c
+// Disable (opt-out)
+-DMIDA_SIGNATURE_DISABLE=1
+
+// Customize signature bytes/size
+-DMIDA_SIGNATURE_BYTES='M','I','D','A','!','!'
+-DMIDA_SIGNATURE_SIZE=6
+```
+
+Overhead:
+
+- Prefix size defaults to 4 bytes, padded up to pointer size (typically 8 bytes
+    on 64-bit). Bytemaps and allocations increase by this amount when enabled.
+- Runtime impact is negligible (a few byte stores/checks per allocation/wrap).
+
 ## Examples and Tests
 
 For more examples and tests, please refer to the [examples](examples) and [tests](tests) directories in the repository.
