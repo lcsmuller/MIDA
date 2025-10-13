@@ -7,6 +7,93 @@ extern "C" {
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
+
+/**
+ * @typedef mida_byte
+ * @brief Type used for raw byte operations
+ *
+ * Alias for char used for buffer operations to make it clearer that
+ * we're dealing with raw bytes rather than characters.
+ */
+typedef char mida_byte;
+
+/* Optional hidden signature header (enabled by default; opt-out) */
+#ifdef MIDA_SIGNATURE_DISABLE
+#undef MIDA_SIGNATURE_ENABLE
+#define MIDA_SIGNATURE_ENABLE 0
+#endif
+#ifndef MIDA_SIGNATURE_ENABLE
+#define MIDA_SIGNATURE_ENABLE 1
+#endif /* MIDA_SIGNATURE_ENABLE */
+
+/* Signature bytes and size (overridable). Keep it simple by default. */
+#if MIDA_SIGNATURE_ENABLE
+#ifndef MIDA_SIGNATURE_BYTES
+#define MIDA_SIGNATURE_BYTES 'M', 'I', 'D', 'A'
+#endif
+#ifndef MIDA_SIGNATURE_SIZE
+#define MIDA_SIGNATURE_SIZE 4
+#endif
+#else
+#define MIDA_SIGNATURE_SIZE 0
+#endif /* MIDA_SIGNATURE_ENABLE */
+
+/* Align prefix to pointer size to preserve typical alignment guarantees */
+#define __MIDA_ALIGN        ((size_t)sizeof(void *))
+#define __MIDA_PAD_UP(n, a) (((n) + (a) - 1) & ~((a) - 1))
+#define MIDA_PREFIX_SIZE    (__MIDA_PAD_UP(MIDA_SIGNATURE_SIZE, __MIDA_ALIGN))
+
+/* Internal helpers to map between views when a prefix is present */
+#define __mida_data_from_container(_container_ptr, _container_size)           \
+    ((mida_byte *)(_container_ptr) + (_container_size))
+#define __mida_container_from_data(_data_ptr, _container_size)                \
+    (void *)((mida_byte *)(_data_ptr) - (_container_size))
+#define __mida_buffer_from_data(_data_ptr, _container_size)                   \
+    ((mida_byte *)__mida_container_from_data((_data_ptr), (_container_size))  \
+     - (MIDA_PREFIX_SIZE))
+
+#if MIDA_SIGNATURE_ENABLE
+static inline void
+__mida_write_signature(mida_byte *buffer)
+{
+    const mida_byte sig[MIDA_SIGNATURE_SIZE] = { MIDA_SIGNATURE_BYTES };
+    /* MIDA_PREFIX_SIZE is padded; write only the signature bytes and zero the
+     * rest */
+    for (size_t i = 0; i < (size_t)MIDA_SIGNATURE_SIZE; ++i) {
+        buffer[i] = sig[i];
+    }
+    for (size_t i = (size_t)MIDA_SIGNATURE_SIZE; i < (size_t)MIDA_PREFIX_SIZE;
+         ++i)
+    {
+        buffer[i] = 0;
+    }
+}
+
+static inline int
+__mida_check_signature(const mida_byte *buffer)
+{
+    const mida_byte sig[MIDA_SIGNATURE_SIZE] = { MIDA_SIGNATURE_BYTES };
+    for (size_t i = 0; i < (size_t)MIDA_SIGNATURE_SIZE; ++i) {
+        if (buffer[i] != sig[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+#else
+static inline void
+__mida_write_signature(mida_byte *buffer)
+{
+    (void)buffer; /* no-op when disabled */
+}
+static inline int
+__mida_check_signature(const mida_byte *buffer)
+{
+    (void)buffer;
+    return 1; /* always valid when disabled */
+}
+#endif /* MIDA_SIGNATURE_ENABLE */
 
 #if __STDC_VERSION__ && __STDC_VERSION__ >= 199901L
 #define MIDA_WITH_C99
@@ -18,14 +105,7 @@ extern "C" {
 #define MIDA_API extern
 #endif /* MIDA_STATIC */
 
-/**
- * @typedef mida_byte
- * @brief Type used for raw byte operations
- *
- * Alias for char used for buffer operations to make it clearer that
- * we're dealing with raw bytes rather than characters.
- */
-typedef char mida_byte;
+/* moved typedef earlier to be available for inline helpers */
 
 /**
  * @def MIDA_BYTEMAP(_container, _bytemap, _size)
@@ -39,7 +119,7 @@ typedef char mida_byte;
  * @param _sizeof Size of the data that will be stored with metadata
  */
 #define MIDA_BYTEMAP(_container, _bytemap, _sizeof)                           \
-    mida_byte(_bytemap)[sizeof(_container) + (_sizeof)]
+    mida_byte(_bytemap)[MIDA_PREFIX_SIZE + sizeof(_container) + (_sizeof)]
 
 MIDA_API void *__mida_malloc(const size_t container_size,
                              const size_t element_size,
@@ -111,7 +191,8 @@ MIDA_API void *__mida_realloc(const size_t container_size,
  * @param _container Type of the container structure
  * @param _base Pointer to the data (not the container)
  */
-#define mida_free(_container, _base) free(MIDA(_container, _base))
+#define mida_free(_container, _base)                                          \
+    free(__mida_buffer_from_data((_base), sizeof(_container)))
 
 MIDA_API void *__mida_nwrap(const size_t container_size,
                             void *data,
@@ -134,7 +215,8 @@ MIDA_API void *__mida_nwrap(const size_t container_size,
  */
 #define mida_nwrap(_container, _data, _bytemap, _bytemap_size)                \
     __mida_nwrap(sizeof(_container), _data,                                   \
-                 _bytemap_size - sizeof(_container), _bytemap)
+                 (_bytemap_size) - MIDA_PREFIX_SIZE - sizeof(_container),     \
+                 (mida_byte *)(_bytemap) + MIDA_PREFIX_SIZE)
 
 /**
  * @def mida_wrap(_container, _data, _bytemap)
@@ -163,10 +245,7 @@ MIDA_API void *__mida_nwrap(const size_t container_size,
  * @return A compound literal initialized to zero
  */
 #define mida_bytemap(_container, _sizeof)                                     \
-    (mida_byte[sizeof(_container) + _sizeof])                                 \
-    {                                                                         \
-        0                                                                     \
-    }
+    (mida_byte[MIDA_PREFIX_SIZE + sizeof(_container) + _sizeof]){ 0 }
 
 /**
  * @def mida_array(_container, _type, ...)
@@ -180,10 +259,9 @@ MIDA_API void *__mida_nwrap(const size_t container_size,
  * @param ... Compound literal array initialization values
  * @return Pointer to the array with extended MIDA metadata
  */
-#define mida_array(_container, _type, ...)                                    \
-    (_type *)(__mida_nwrap(                                                   \
-        sizeof(_container), (_type[])__VA_ARGS__,                             \
-        sizeof((_type[])__VA_ARGS__),                                         \
+#define mida_array(_container, _type, ...)                                   \
+    (_type *)(mida_wrap(                                                     \
+        _container, (_type[])__VA_ARGS__,                                    \
         mida_bytemap(_container, sizeof((_type[])__VA_ARGS__))))
 
 /**
@@ -224,26 +302,33 @@ MIDA_API void *__mida_nwrap(const size_t container_size,
 #define MIDA(_container, _base)                                               \
     ((_container *)((mida_byte *)(_base) - sizeof(_container)))
 
+/* Public helper: validate that a pointer was produced by MIDA (best-effort).
+ * Returns 1 when valid, 0 when invalid. When signatures are disabled, this
+ * always returns 1 to avoid breaking existing code paths. */
+#define mida_is_valid(_container, _base)                                      \
+    (__mida_check_signature((const mida_byte *)__mida_buffer_from_data(       \
+        (_base), sizeof(_container))))
+
 #ifndef MIDA_HEADER
 
-#include <string.h>
 #include <stdlib.h>
-
-#define __mida_data_from_container(_container_ptr, _container_size)           \
-    ((mida_byte *)_container_ptr + _container_size)
-#define __mida_container_from_data(_data_ptr, _container_size)                \
-    (void *)((mida_byte *)_data_ptr - _container_size)
 
 MIDA_API void *
 __mida_malloc(const size_t container_size,
               const size_t element_size,
               const size_t count)
 {
-    const size_t data_size = element_size * count,
-                 total_size = container_size + data_size;
-    mida_byte *container = malloc(total_size);
-    return !container ? NULL
-                      : __mida_data_from_container(container, container_size);
+    const size_t data_size = element_size * count;
+    const size_t total_size = MIDA_PREFIX_SIZE + container_size + data_size;
+    mida_byte *buffer = malloc(total_size);
+    if (!buffer) {
+        return NULL;
+    }
+    if (MIDA_PREFIX_SIZE) {
+        __mida_write_signature(buffer);
+    }
+    mida_byte *container = buffer + MIDA_PREFIX_SIZE;
+    return __mida_data_from_container(container, container_size);
 }
 
 MIDA_API void *
@@ -251,11 +336,17 @@ __mida_calloc(const size_t container_size,
               const size_t element_size,
               const size_t count)
 {
-    const size_t data_size = element_size * count,
-                 total_size = container_size + data_size;
-    mida_byte *container = calloc(1, total_size);
-    return !container ? NULL
-                      : __mida_data_from_container(container, container_size);
+    const size_t data_size = element_size * count;
+    const size_t total_size = MIDA_PREFIX_SIZE + container_size + data_size;
+    mida_byte *buffer = calloc(1, total_size);
+    if (!buffer) {
+        return NULL;
+    }
+    if (MIDA_PREFIX_SIZE) {
+        __mida_write_signature(buffer);
+    }
+    mida_byte *container = buffer + MIDA_PREFIX_SIZE;
+    return __mida_data_from_container(container, container_size);
 }
 
 MIDA_API void *
@@ -265,14 +356,23 @@ __mida_realloc(const size_t container_size,
                const size_t count)
 {
     if (base) {
-        const size_t data_size = element_size * count,
-                     total_size = container_size + data_size;
+        const size_t data_size = element_size * count;
+        const size_t total_size =
+            MIDA_PREFIX_SIZE + container_size + data_size;
         mida_byte *original_container =
-            __mida_container_from_data(base, container_size);
-        mida_byte *container = realloc(original_container, total_size);
-        return !container
-                   ? NULL
-                   : __mida_data_from_container(container, container_size);
+            (mida_byte *)__mida_container_from_data(base, container_size);
+        mida_byte *original_buffer = original_container - MIDA_PREFIX_SIZE;
+        mida_byte *buffer = realloc(original_buffer, total_size);
+        if (!buffer) {
+            return NULL;
+        }
+        /* Signature preserved by realloc; rewrite just in case of
+         * calloc->realloc pattern */
+        if (MIDA_PREFIX_SIZE) {
+            __mida_write_signature(buffer);
+        }
+        mida_byte *container = buffer + MIDA_PREFIX_SIZE;
+        return __mida_data_from_container(container, container_size);
     }
     return __mida_malloc(container_size, element_size, count);
 }
@@ -283,12 +383,14 @@ __mida_nwrap(const size_t container_size,
              const size_t size,
              mida_byte *const container)
 {
+    if (MIDA_PREFIX_SIZE) {
+        /* container points to the beginning of the container region; header is
+         * just before */
+        __mida_write_signature(container - MIDA_PREFIX_SIZE);
+    }
     return memcpy(__mida_data_from_container(container, container_size), data,
                   size);
 }
-
-#undef _mida_data_from_container
-#undef _mida_container_from_data
 
 #endif /* MIDA_HEADER */
 

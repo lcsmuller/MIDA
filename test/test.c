@@ -77,9 +77,11 @@ test_realloc(void *base, size_t size, size_t length)
 #define test_string(_string)                                                  \
     _test_string(mida_string(MD, _string), sizeof(_string))
 
-#define test_wrap(_data, _bytemap)                                            \
-    _test_wrap(mida_wrap(MD, _data, _bytemap), sizeof(_bytemap) - sizeof(MD), \
-               (sizeof(_bytemap) - sizeof(MD)) / sizeof *_data)
+#define test_wrap(_data, _bytemap)                                           \
+    _test_wrap(                                                              \
+        mida_wrap(MD, _data, _bytemap),                                      \
+        (sizeof(_bytemap) - sizeof(MD) - MIDA_PREFIX_SIZE),                  \
+        (sizeof(_bytemap) - sizeof(MD) - MIDA_PREFIX_SIZE) / sizeof *_data)
 
 TEST
 test_init_compound_literals(void)
